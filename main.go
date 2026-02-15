@@ -54,6 +54,10 @@ type Reflector struct {
 	// Stateful tracking: map[ifaceName] -> Last time a query was seen
 	recentQueries map[string]time.Time
 	mu            sync.Mutex
+
+	// forwarder is the function called to actually send a packet.
+	// We use a field here so it can be mocked in unit tests.
+	forwarder func(ifaceName string, data []byte)
 }
 
 func NewReflector(cfg *Config) *Reflector {
@@ -64,6 +68,8 @@ func NewReflector(cfg *Config) *Reflector {
 		groupMap:      make(map[string][]string),
 		recentQueries: make(map[string]time.Time),
 	}
+
+	r.forwarder = r.forward // Set the default implementation
 
 	for _, iface := range cfg.Interfaces {
 		r.ifaceMap[iface.Name] = iface.Group
@@ -258,7 +264,7 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 					}(),
 					srcIP, srcIface, destIfaceName, destGroup,
 					getMsgSummary(msg))
-				r.forward(destIfaceName, data)
+				r.forwarder(destIfaceName, data)
 			}
 		}
 	}
