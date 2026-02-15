@@ -168,15 +168,16 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 			continue
 		}
 
-		// 1. Type Filtering
-		isResponse := msg.Response || len(msg.Answer) > 0
+		// 1. Type Filtering (Strictly use the msg.Response flag)
+		// Important: Queries can contain Answers (Known Answers), but only
+		// msg.Response = true indicates an actual Response packet.
+		typeName := "query"
+		if msg.Response {
+			typeName = "response"
+		}
 
 		if len(rule.Types) > 0 {
 			match := false
-			typeName := "query"
-			if isResponse {
-				typeName = "response"
-			}
 			for _, t := range rule.Types {
 				if t == typeName {
 					match = true
@@ -205,19 +206,13 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		// 3. Service Type Filtering (for Queries)
 		if !msg.Response && len(rule.Filter.AllowedServices) > 0 {
 			allowed := false
-			// Check if ANY question in the query matches our allowed services
 			for _, q := range msg.Question {
-				// A: Match against the allowed service list (e.g. "_airplay._tcp")
 				for _, service := range rule.Filter.AllowedServices {
 					if strings.Contains(q.Name, service) {
 						allowed = true
 						break
 					}
 				}
-
-				// B: Allow hostname resolution and reverse lookups.
-				// Hostnames end in .local. and don't have underscores.
-				// Reverse lookups end in .arpa.
 				if !allowed {
 					isHostname := strings.HasSuffix(q.Name, ".local.") && !strings.Contains(q.Name, "_")
 					isReverse := strings.HasSuffix(q.Name, ".in-addr.arpa.") || strings.HasSuffix(q.Name, ".ip6.arpa.")
@@ -225,7 +220,6 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 						allowed = true
 					}
 				}
-
 				if allowed {
 					break
 				}
@@ -243,7 +237,9 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 				}
 
 				// STATEFUL OPTIMIZATION:
-				if isResponse && destGroup == "users" {
+				// If this is a Response going to a 'users' group,
+				// ONLY send it to interfaces that have sent a query in the last 60 seconds.
+				if msg.Response && destGroup == "users" {
 					r.mu.Lock()
 					lastQuery, ok := r.recentQueries[destIfaceName]
 					r.mu.Unlock()
@@ -255,7 +251,7 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 
 				log.Printf("Reflecting %s from %s (%s) to %s (%s) - %s",
 					func() string {
-						if isResponse {
+						if msg.Response {
 							return "Response"
 						}
 						return "Query"
