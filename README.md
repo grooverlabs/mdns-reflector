@@ -47,6 +47,25 @@ sequenceDiagram
     Reflector--xUserVLAN: Packet Dropped
 ```
 
+## Understanding the Logs (mDNS Record Types)
+
+In the logs, you will see various DNS record types. These are standard mDNS record types (RFC 6762) used during discovery:
+
+| Type | Full Name | Purpose in Discovery |
+| :--- | :--- | :--- |
+| **PTR** | Pointer Record | **Discovery:** Maps a service type (e.g., `_ipp._tcp`) to a specific device name. This is usually the first packet seen. |
+| **SRV** | Service Record | **Resolution:** Provides the **Port Number** and the **Hostname** for a specific service. |
+| **TXT** | Text Record | **Details:** Contains key-value pairs with extra info (e.g., printer model, scan resolution, AirPlay version). |
+| **A** | Address (IPv4) | **Location:** Maps a hostname (e.g., `printer.local`) to its **IPv4 address**. |
+| **AAAA** | Address (IPv6) | **Location:** Maps a hostname to its **IPv6 address**. |
+| **ANY** | Any Record | **Probe:** A generic query often sent by OSs during startup to find any available records for a name. |
+
+### Example Discovery Flow in Logs:
+1. **Query (PTR):** "Who is an AirPlay device?"
+2. **Response (PTR):** "I am 'Roku Event Back'."
+3. **Query (SRV/TXT):** "What port does 'Roku Event Back' use and what are its features?"
+4. **Query (A):** "What is the IP address of 'X02800M8GX3H.local'?"
+
 ## Configuration Example
 
 ```yaml
