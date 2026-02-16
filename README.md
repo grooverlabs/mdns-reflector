@@ -15,6 +15,37 @@ A high-performance, Go-based mDNS reflector designed for complex networks with m
 3. **State Tracking:** When a "User" VLAN sends a query, the app opens a 60-second window for that specific interface to receive responses.
 4. **Reflection:** Packets are reflected across interfaces while preserving the original mDNS data but stripping the "Unicast Response" (QU) bit from queries to ensure visibility.
 
+## How it Works
+
+```mermaid
+sequenceDiagram
+    participant UserVLAN as User (vlan.11)
+    participant Reflector as mDNS Reflector
+    participant IoTVLAN as IoT (vlan.19)
+    participant TVVLAN as TV (vlan.20)
+
+    Note over UserVLAN, TVVLAN: Phase 1: Service Discovery
+    UserVLAN->>Reflector: mDNS Query (e.g., _ipp._tcp) [QU Bit=1]
+    
+    Note over Reflector: 1. Record Query Time for vlan.11<br/>2. Strip QU Bit (Force Multicast Answer)<br/>3. Apply Service Filter
+    
+    Reflector->>IoTVLAN: Reflected Query [QU Bit=0]
+    Reflector->>TVVLAN: Reflected Query [QU Bit=0]
+
+    Note over UserVLAN, TVVLAN: Phase 2: Targeted Response
+    IoTVLAN->>Reflector: mDNS Response from Printer (192.168.19.10)
+    
+    Note over Reflector: 1. Apply IP Filter (Allowed)<br/>2. Check Stateful Window for User VLANs
+    
+    Reflector-->>UserVLAN: Reflect Response to vlan.11 (Active Window)
+    Note over Reflector: Other VLANs (vlan.10, vlan.12...) are ignored
+
+    Note over UserVLAN, TVVLAN: Phase 3: Security Blocking
+    IoTVLAN->>Reflector: mDNS Response from Unauthorized Device (192.168.19.99)
+    Note over Reflector: Apply IP Filter (Blocked)
+    Reflector--xUserVLAN: Packet Dropped
+```
+
 ## Configuration Example
 
 ```yaml
