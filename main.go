@@ -81,6 +81,11 @@ func NewReflector(cfg *Config) *Reflector {
 }
 
 func (r *Reflector) Start() error {
+	if len(r.ifaceMap) == 0 {
+		log.Printf("Warning: No interfaces configured. Waiting for configuration...")
+		return nil
+	}
+
 	c, err := net.ListenPacket("udp4", ":5353")
 	if err != nil {
 		return err
