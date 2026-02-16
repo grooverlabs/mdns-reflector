@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -304,7 +305,10 @@ func (r *Reflector) forward(ifaceName string, data []byte) {
 }
 
 func main() {
-	cfg, err := LoadConfig("config.yaml")
+	configPath := flag.String("config", "config.yaml", "Path to configuration file")
+	flag.Parse()
+
+	cfg, err := LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("Error loading config: %v", err)
 	}

@@ -1,0 +1,51 @@
+# mdns-reflector.yaml (Sample)
+log_level: "info"
+
+# 1. Define your network interfaces and group them.
+# 'name' must match your Linux interface name (e.g. vlan.10, eth0.20)
+# 'group' is a label used to write rules below.
+interfaces:
+  - { name: "vlan.10", group: "users" }
+  - { name: "vlan.11", group: "users" }
+  - { name: "vlan.19", group: "gl_iot" }
+  - { name: "vlan.20", group: "gl_tv" }
+  - { name: "vlan.103", group: "gl_eventspace" }
+
+# 2. Define the behavior between groups.
+rules:
+  # rule 0: Allow all user groups to discover IoT and TV services.
+  # Forwarding queries from Users -> Services.
+  - from: "users"
+    to: ["gl_iot", "gl_tv", "gl_eventspace"]
+    types: ["query"]
+    filter:
+      # Optional: only allow specific service discovery types to minimize noise.
+      allowed_services:
+        - "_ipp._tcp"            # Printing
+        - "_printer._tcp"
+        - "_scanner._tcp"        # Scanning
+        - "_airplay._tcp"        # Apple AirPlay
+        - "_googlecast._tcp"     # Chromecast
+        - "_spotify-connect._tcp"
+        - "_services._dns-sd._udp" # General Meta-Query
+
+  # rule 1: Filter responses from IoT (gl_iot) back to Users.
+  # Forwarding responses from IoT -> Users.
+  - from: "gl_iot"
+    to: ["users"]
+    types: ["response"]
+    filter:
+      # Optional: only allow specific IPs to reflect their services.
+      allowed_ips:
+        - "192.168.19.10" # Shared Printer
+        - "192.168.19.11" # Scanner
+
+  # rule 2: Allow all EventSpace devices to respond to Users.
+  - from: "gl_eventspace"
+    to: ["users"]
+    types: ["response"]
+
+  # rule 3: Allow all TVs to respond to Users.
+  - from: "gl_tv"
+    to: ["users"]
+    types: ["response"]

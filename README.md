@@ -10,6 +10,28 @@ A high-performance, Go-based mDNS reflector designed for complex networks with m
 - **Stateful Discovery Window:** Only reflects responses back to VLANs that have sent a query in the last 60 seconds. This prevents one response from being flooded across all 50+ VLANs simultaneously.
 - **Multicast Enforcement (QU-bit Stripping):** Automatically modifies queries to force devices to respond via Multicast, ensuring the reflector can "hear" and forward responses from devices that might otherwise try to respond via Unicast across VLAN boundaries.
 
+## System Requirements (Linux/Raspberry Pi)
+
+Before running the reflector on a system with many VLANs, the following OS-level configurations are required:
+
+### 1. VLAN Support
+The `8021q` kernel module must be loaded to support sub-interfaces:
+```bash
+sudo modprobe 8021q
+# To make permanent:
+echo "8021q" | sudo tee -a /etc/modules
+```
+
+### 2. Increase Multicast Group Limit
+Linux defaults to a maximum of 20 multicast group memberships per socket. Since this app joins the mDNS group on every interface, you must increase this limit:
+```bash
+# Add to /etc/sysctl.conf
+net.ipv4.igmp_max_memberships = 100
+
+# Apply immediately
+sudo sysctl -p
+```
+
 ## Architecture & Logic
 1. **Listeners:** Binds once to `0.0.0.0:5353` and joins the mDNS multicast group (`224.0.0.251`) on all configured sub-interfaces.
 2. **Packet Inspection:** Uses the `github.com/miekg/dns` library to parse packets and identify if they are Queries or Responses.
@@ -131,15 +153,36 @@ avahi-browse -rt _googlecast._tcp
 avahi-browse -at
 ```
 
-## Deployment on Raspberry Pi (aarch64)
+## Deployment
 
+### Option 1: Debian Package (Recommended)
+Building a `.deb` package automates the system requirements (sysctl, 8021q) and sets up a systemd service.
+
+1. **Build the package:**
+   ```bash
+   # For Raspberry Pi (default)
+   make package
+   
+   # For Intel/AMD (x86_64)
+   make package ARCH=amd64
+   ```
+2. **Install:**
+   ```bash
+   sudo dpkg -i bin/mdns-reflector_1.0.0_arm64.deb
+   ```
+
+### Option 2: Manual Binary Deployment
 1. **Build:**
    ```bash
+   # For Raspberry Pi
    make cross-compile
+   
+   # For Intel/AMD
+   make cross-compile ARCH=amd64
    ```
-2. **Copy to Pi:**
-   Transfer `bin/mdns-reflector-pi` and `config.yaml` to the Pi.
+2. **Copy to target:**
+   Transfer the binary from `bin/` and `config.yaml` to your machine.
 3. **Run:**
    ```bash
-   sudo ./mdns-reflector-pi
+   sudo ./bin/mdns-reflector-arm64 --config config.yaml
    ```

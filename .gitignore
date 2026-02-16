@@ -1,0 +1,12 @@
+# Binaries and build artifacts
+bin/
+mdns-reflector
+mdns-reflector-pi
+mdns-reflector-arm64
+mdns-reflector-amd64
+
+# Test coverage
+coverage.out
+
+# Local configuration
+config.yaml

@@ -1,0 +1,31 @@
+name: "mdns-reflector"
+arch: "${ARCH}"
+platform: "linux"
+version: "1.0.0"
+section: "default"
+priority: "extra"
+maintainer: "pmaseberg"
+description: "Stateful mDNS Reflector for Multi-VLAN networks"
+vendor: "pmaseberg"
+homepage: "https://github.com/pmaseberg/mdns-reflector"
+license: "MIT"
+
+contents:
+  - src: "bin/mdns-reflector-pkg"
+    dst: "/usr/bin/mdns-reflector"
+  
+  - src: "config.yaml.sample"
+    dst: "/etc/mdns-reflector/config.yaml"
+    type: "config"
+
+  - src: "packaging/etc/sysctl.d/mdns-reflector.conf"
+    dst: "/etc/sysctl.d/mdns-reflector.conf"
+
+  - src: "packaging/etc/modules-load.d/mdns-reflector.conf"
+    dst: "/etc/modules-load.d/mdns-reflector.conf"
+
+  - src: "packaging/lib/systemd/system/mdns-reflector.service"
+    dst: "/lib/systemd/system/mdns-reflector.service"
+
+scripts:
+  postinstall: "packaging/postinstall.sh"
