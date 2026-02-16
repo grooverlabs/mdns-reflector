@@ -8,13 +8,9 @@ import (
 )
 
 type Config struct {
-
-	LogLevel   string           `yaml:"log_level"`
-
+	LogLevel   string            `yaml:"log_level"`
 	Interfaces []InterfaceConfig `yaml:"interfaces" validate:"dive"`
-
-	Rules      []Rule           `yaml:"rules" validate:"dive"`
-
+	Rules      []Rule            `yaml:"rules" validate:"dive"`
 }
 
 type InterfaceConfig struct {
@@ -30,7 +26,7 @@ type Rule struct {
 }
 
 type Filter struct {
-	AllowedIPs []string `yaml:"allowed_ips" validate:"dive,ip"`
+	AllowedIPs      []string `yaml:"allowed_ips" validate:"dive,ip"`
 	AllowedServices []string `yaml:"allowed_services"`
 }
 

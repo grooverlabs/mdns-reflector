@@ -174,13 +174,13 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		// in their queries (RFC 6762). When this bit is set, the service (e.g., a TV or printer)
 		// will attempt to respond directly to the client's IP address via Unicast.
 		//
-		// In a multi-VLAN environment, this is problematic: the Unicast response would be 
-		// sent to the client's IP in a different subnet, bypassing this reflector and 
+		// In a multi-VLAN environment, this is problematic: the Unicast response would be
+		// sent to the client's IP in a different subnet, bypassing this reflector and
 		// likely being blocked by the network firewall.
 		//
-		// By clearing the QU bit (the top bit of the Qclass field), we force the device 
-		// to respond via Multicast. This ensures the response is sent to the 224.0.0.251 
-		// address on its local segment, allowing this reflector to "hear" the response 
+		// By clearing the QU bit (the top bit of the Qclass field), we force the device
+		// to respond via Multicast. This ensures the response is sent to the 224.0.0.251
+		// address on its local segment, allowing this reflector to "hear" the response
 		// and forward it back to the original VLAN.
 		modified := false
 		for i := range msg.Question {
