@@ -1,8 +1,9 @@
 # mdns-reflector
 
-A high-performance, Go-based mDNS reflector designed for complex networks with many VLANs. It provides fine-grained control over service discovery while minimizing network chatter and preventing multicast amplification storms.
+A high-performance, Go-based mDNS reflector designed for complex networks with many VLANs. Built using the latest **miekg/dns v2** library for maximum throughput and minimal latency.
 
 ## Features
+- **miekg/dns v2 Core:** Leverages the major rewrite of the industry-standard DNS library for significantly improved performance on embedded hardware.
 - **Interface Grouping:** Manage 50+ VLANs by grouping them (e.g., `users`, `gl_iot`, `gl_tv`).
 - **IP-Based Filtering:** Strictly limit which devices can reflect services (e.g., only specific printer/scanner IPs).
 - **Directional Rule Enforcement:** Define exactly how traffic flows (e.g., Queries: Users -> IoT; Responses: IoT -> Users).

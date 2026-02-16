@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/miekg/dns"
+	"codeberg.org/miekg/dns"
 	"golang.org/x/net/ipv4"
 )
 
@@ -20,7 +20,7 @@ func getMsgSummary(msg *dns.Msg) string {
 	if !msg.Response {
 		var qStrs []string
 		for _, q := range msg.Question {
-			qStrs = append(qStrs, fmt.Sprintf("%s (%s)", q.Name, dns.TypeToString[q.Qtype]))
+			qStrs = append(qStrs, fmt.Sprintf("%s (%s)", q.Header().Name, dns.TypeToString[dns.RRToType(q)]))
 		}
 		if len(qStrs) > 3 {
 			return fmt.Sprintf("Questions: [%s ... +%d more]", strings.Join(qStrs[:3], ", "), len(qStrs)-3)
@@ -32,7 +32,7 @@ func getMsgSummary(msg *dns.Msg) string {
 	// Combine Answer and Extra records for a better overview
 	records := append(msg.Answer, msg.Extra...)
 	for _, a := range records {
-		aStrs = append(aStrs, fmt.Sprintf("%s (%s)", a.Header().Name, dns.TypeToString[a.Header().Rrtype]))
+		aStrs = append(aStrs, fmt.Sprintf("%s (%s)", a.Header().Name, dns.TypeToString[dns.RRToType(a)]))
 	}
 
 	if len(aStrs) > 3 {
@@ -134,7 +134,8 @@ func (r *Reflector) listen() {
 
 		srcUDP := src.(*net.UDPAddr)
 		msg := new(dns.Msg)
-		if err := msg.Unpack(buf[:n]); err != nil {
+		msg.Data = buf[:n]
+		if err := msg.Unpack(); err != nil {
 			continue
 		}
 
@@ -152,19 +153,16 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		r.mu.Unlock()
 
 		// FORCE MULTICAST RESPONSES:
-		// Clear the QU (Unicast Response) bit in all questions.
-		// This ensures that TVs and other devices "shout" their answer on the
-		// multicast address so that the reflector can hear and forward it.
 		modified := false
 		for i := range msg.Question {
-			if msg.Question[i].Qclass&0x8000 != 0 {
-				msg.Question[i].Qclass &= 0x7FFF
+			if msg.Question[i].Header().Class&0x8000 != 0 {
+				msg.Question[i].Header().Class &= 0x7FFF
 				modified = true
 			}
 		}
 		if modified {
-			if newData, err := msg.Pack(); err == nil {
-				data = newData
+			if err := msg.Pack(); err == nil {
+				data = msg.Data
 			}
 		}
 	}
@@ -175,8 +173,6 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		}
 
 		// 1. Type Filtering (Strictly use the msg.Response flag)
-		// Important: Queries can contain Answers (Known Answers), but only
-		// msg.Response = true indicates an actual Response packet.
 		typeName := "query"
 		if msg.Response {
 			typeName = "response"
@@ -214,14 +210,14 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 			allowed := false
 			for _, q := range msg.Question {
 				for _, service := range rule.Filter.AllowedServices {
-					if strings.Contains(q.Name, service) {
+					if strings.Contains(q.Header().Name, service) {
 						allowed = true
 						break
 					}
 				}
 				if !allowed {
-					isHostname := strings.HasSuffix(q.Name, ".local.") && !strings.Contains(q.Name, "_")
-					isReverse := strings.HasSuffix(q.Name, ".in-addr.arpa.") || strings.HasSuffix(q.Name, ".ip6.arpa.")
+					isHostname := strings.HasSuffix(q.Header().Name, ".local.") && !strings.Contains(q.Header().Name, "_")
+					isReverse := strings.HasSuffix(q.Header().Name, ".in-addr.arpa.") || strings.HasSuffix(q.Header().Name, ".ip6.arpa.")
 					if isHostname || isReverse {
 						allowed = true
 					}

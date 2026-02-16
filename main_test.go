@@ -2,10 +2,11 @@ package main
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 	"testing"
 
-	"github.com/miekg/dns"
+	"codeberg.org/miekg/dns"
 )
 
 type mockForwarder struct {
@@ -60,12 +61,16 @@ func TestHandlePacket(t *testing.T) {
 	t.Run("Query from user to IoT allowed service", func(t *testing.T) {
 		mock.calls = nil
 		msg := &dns.Msg{
-			MsgHdr: dns.MsgHdr{Response: false},
-			Question: []dns.Question{
-				{Name: "_airplay._tcp.local.", Qtype: dns.TypePTR, Qclass: dns.ClassINET | 0x8000}, // With QU bit
+			MsgHeader: dns.MsgHeader{Response: false},
+			Question: []dns.RR{
+				&dns.PTR{
+					Hdr: dns.Header{Name: "_airplay._tcp.local.", Class: dns.ClassINET | 0x8000},
+				},
 			},
 		}
-		data, _ := msg.Pack()
+		msg.Question[0].(*dns.PTR).Ptr = "target.local."
+		msg.Pack()
+		data := msg.Data
 		srcIP := net.ParseIP("192.168.10.50")
 
 		r.handlePacket("vlan.10", data, msg, srcIP)
@@ -77,8 +82,9 @@ func TestHandlePacket(t *testing.T) {
 
 		// Check if QU bit was stripped in the forwarded data
 		forwardedMsg := new(dns.Msg)
-		forwardedMsg.Unpack(mock.calls[0].data)
-		if forwardedMsg.Question[0].Qclass&0x8000 != 0 {
+		forwardedMsg.Data = mock.calls[0].data
+		forwardedMsg.Unpack()
+		if forwardedMsg.Question[0].Header().Class&0x8000 != 0 {
 			t.Error("QU bit was not stripped from forwarded query")
 		}
 	})
@@ -86,10 +92,12 @@ func TestHandlePacket(t *testing.T) {
 	t.Run("Query from user blocked service", func(t *testing.T) {
 		mock.calls = nil
 		msg := &dns.Msg{
-			MsgHdr:   dns.MsgHdr{Response: false},
-			Question: []dns.Question{{Name: "_ssh._tcp.local.", Qtype: dns.TypePTR, Qclass: dns.ClassINET}},
+			MsgHeader: dns.MsgHeader{Response: false},
+			Question:  []dns.RR{&dns.PTR{Hdr: dns.Header{Name: "_ssh._tcp.local.", Class: dns.ClassINET}}},
 		}
-		data, _ := msg.Pack()
+		msg.Question[0].(*dns.PTR).Ptr = "target.local."
+		msg.Pack()
+		data := msg.Data
 		srcIP := net.ParseIP("192.168.10.50")
 
 		r.handlePacket("vlan.10", data, msg, srcIP)
@@ -102,10 +110,12 @@ func TestHandlePacket(t *testing.T) {
 	t.Run("Hostname resolution allowed", func(t *testing.T) {
 		mock.calls = nil
 		msg := &dns.Msg{
-			MsgHdr:   dns.MsgHdr{Response: false},
-			Question: []dns.Question{{Name: "myhost.local.", Qtype: dns.TypeA, Qclass: dns.ClassINET}},
+			MsgHeader: dns.MsgHeader{Response: false},
+			Question:  []dns.RR{&dns.A{Hdr: dns.Header{Name: "myhost.local.", Class: dns.ClassINET}}},
 		}
-		data, _ := msg.Pack()
+		msg.Question[0].(*dns.A).Addr = netip.MustParseAddr("1.2.3.4")
+		msg.Pack()
+		data := msg.Data
 		srcIP := net.ParseIP("192.168.10.50")
 
 		r.handlePacket("vlan.10", data, msg, srcIP)
@@ -117,15 +127,19 @@ func TestHandlePacket(t *testing.T) {
 
 	t.Run("Response from IoT allowed IP", func(t *testing.T) {
 		// First, send a query from vlan.10 to open the window
-		qMsg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: false}}
+		qMsg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: false}}
 		r.handlePacket("vlan.10", nil, qMsg, net.ParseIP("192.168.10.50"))
 
 		mock.calls = nil
 		respMsg := &dns.Msg{
-			MsgHdr: dns.MsgHdr{Response: true},
-			Answer: []dns.RR{&dns.PTR{Hdr: dns.RR_Header{Name: "_airplay._tcp.local.", Rrtype: dns.TypePTR, Class: dns.ClassINET}}},
+			MsgHeader: dns.MsgHeader{Response: true},
+			Answer: []dns.RR{&dns.PTR{
+				Hdr: dns.Header{Name: "_airplay._tcp.local.", Class: dns.ClassINET},
+			}},
 		}
-		data, _ := respMsg.Pack()
+		respMsg.Answer[0].(*dns.PTR).Ptr = "target.local."
+		respMsg.Pack()
+		data := respMsg.Data
 		srcIP := net.ParseIP("192.168.19.10")
 
 		r.handlePacket("vlan.19", data, respMsg, srcIP)
@@ -140,8 +154,9 @@ func TestHandlePacket(t *testing.T) {
 
 	t.Run("Response from IoT blocked IP", func(t *testing.T) {
 		mock.calls = nil
-		respMsg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: true}}
-		data, _ := respMsg.Pack()
+		respMsg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: true}}
+		respMsg.Pack()
+		data := respMsg.Data
 		srcIP := net.ParseIP("192.168.19.99")
 
 		r.handlePacket("vlan.19", data, respMsg, srcIP)
@@ -158,8 +173,9 @@ func TestHandlePacket(t *testing.T) {
 		delete(r.recentQueries, "vlan.10")
 		r.mu.Unlock()
 
-		respMsg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: true}}
-		data, _ := respMsg.Pack()
+		respMsg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: true}}
+		respMsg.Pack()
+		data := respMsg.Data
 		srcIP := net.ParseIP("192.168.20.10")
 
 		r.handlePacket("vlan.20", data, respMsg, srcIP)
@@ -171,8 +187,9 @@ func TestHandlePacket(t *testing.T) {
 
 	t.Run("Rule type mismatch (Response from User)", func(t *testing.T) {
 		mock.calls = nil
-		respMsg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: true}}
-		data, _ := respMsg.Pack()
+		respMsg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: true}}
+		respMsg.Pack()
+		data := respMsg.Data
 		srcIP := net.ParseIP("192.168.10.50")
 
 		r.handlePacket("vlan.10", data, respMsg, srcIP)
@@ -181,14 +198,15 @@ func TestHandlePacket(t *testing.T) {
 			t.Errorf("Expected 0 forwarding calls for user response, got %d", len(mock.calls))
 		}
 	})
-	
+
 	t.Run("Rule From mismatch", func(t *testing.T) {
 		mock.calls = nil
-		msg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: false}}
-		data, _ := msg.Pack()
+		msg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: false}}
+		msg.Pack()
+		data := msg.Data
 		// Interface not in any rule's 'From'
 		r.handlePacket("unknown_iface", data, msg, net.ParseIP("1.1.1.1"))
-		
+
 		if len(mock.calls) != 0 {
 			t.Errorf("Expected 0 calls for unknown interface")
 		}
@@ -198,11 +216,14 @@ func TestHandlePacket(t *testing.T) {
 func TestMsgSummary(t *testing.T) {
 	t.Run("Summary for query", func(t *testing.T) {
 		msg := &dns.Msg{
-			Question: []dns.Question{
-				{Name: "q1.", Qtype: dns.TypeA},
-				{Name: "q2.", Qtype: dns.TypePTR},
+			Question: []dns.RR{
+				&dns.A{Hdr: dns.Header{Name: "q1.", Class: dns.ClassINET}},
+				&dns.PTR{Hdr: dns.Header{Name: "q2.", Class: dns.ClassINET}},
 			},
 		}
+		msg.Question[0].(*dns.A).Addr = netip.MustParseAddr("1.2.3.4")
+		msg.Question[1].(*dns.PTR).Ptr = "target.local."
+
 		s := getMsgSummary(msg)
 		expected := "Questions: [q1. (A), q2. (PTR)]"
 		if s != expected {
@@ -212,13 +233,17 @@ func TestMsgSummary(t *testing.T) {
 
 	t.Run("Summary for long query", func(t *testing.T) {
 		msg := &dns.Msg{
-			Question: []dns.Question{
-				{Name: "q1.", Qtype: dns.TypeA},
-				{Name: "q2.", Qtype: dns.TypeA},
-				{Name: "q3.", Qtype: dns.TypeA},
-				{Name: "q4.", Qtype: dns.TypeA},
+			Question: []dns.RR{
+				&dns.A{Hdr: dns.Header{Name: "q1.", Class: dns.ClassINET}},
+				&dns.A{Hdr: dns.Header{Name: "q2.", Class: dns.ClassINET}},
+				&dns.A{Hdr: dns.Header{Name: "q3.", Class: dns.ClassINET}},
+				&dns.A{Hdr: dns.Header{Name: "q4.", Class: dns.ClassINET}},
 			},
 		}
+		for i := range msg.Question {
+			msg.Question[i].(*dns.A).Addr = netip.MustParseAddr("1.2.3.4")
+		}
+
 		s := getMsgSummary(msg)
 		if !strings.Contains(s, "+1 more") {
 			t.Errorf("Expected truncation, got %s", s)
@@ -227,19 +252,21 @@ func TestMsgSummary(t *testing.T) {
 
 	t.Run("Summary for response", func(t *testing.T) {
 		msg := &dns.Msg{
-			MsgHdr: dns.MsgHdr{Response: true},
+			MsgHeader: dns.MsgHeader{Response: true},
 			Answer: []dns.RR{
-				&dns.A{Hdr: dns.RR_Header{Name: "a1.", Rrtype: dns.TypeA}},
+				&dns.A{Hdr: dns.Header{Name: "a1.", Class: dns.ClassINET}},
 			},
 		}
+		msg.Answer[0].(*dns.A).Addr = netip.MustParseAddr("1.2.3.4")
+
 		s := getMsgSummary(msg)
 		if !strings.Contains(s, "Records: [a1. (A)]") {
 			t.Errorf("Expected Records summary, got %s", s)
 		}
 	})
-	
+
 	t.Run("Summary for empty response", func(t *testing.T) {
-		msg := &dns.Msg{MsgHdr: dns.MsgHdr{Response: true}}
+		msg := &dns.Msg{MsgHeader: dns.MsgHeader{Response: true}}
 		s := getMsgSummary(msg)
 		if s != "No records" {
 			t.Errorf("Expected 'No records', got %s", s)
