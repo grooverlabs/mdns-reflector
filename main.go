@@ -115,6 +115,13 @@ func (r *Reflector) Start() error {
 }
 
 func (r *Reflector) listen() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Printf("Recovered from panic in listener: %v", err)
+			go r.listen() // Restart the listener
+		}
+	}()
+
 	buf := make([]byte, 9000)
 	for {
 		n, cm, src, err := r.conn.ReadFrom(buf)
@@ -145,6 +152,10 @@ func (r *Reflector) listen() {
 
 func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, srcIP net.IP) {
 	srcGroup := r.ifaceMap[srcIface]
+
+	// Keep track of which interfaces we have already reflected to for THIS packet
+	// to prevent duplicates if multiple rules match.
+	reflectedTo := make(map[string]bool)
 
 	// Track queries
 	if !msg.Response {
@@ -246,7 +257,7 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		// 4. Reflect to target groups
 		for _, destGroup := range rule.To {
 			for _, destIfaceName := range r.groupMap[destGroup] {
-				if destIfaceName == srcIface {
+				if destIfaceName == srcIface || reflectedTo[destIfaceName] {
 					continue
 				}
 
@@ -263,6 +274,7 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 					}
 				}
 
+				reflectedTo[destIfaceName] = true
 				log.Printf("Reflecting %s from %s (%s) to %s (%s) - %s",
 					func() string {
 						if msg.Response {
