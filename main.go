@@ -323,6 +323,7 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 
 		// 4. Reflect to target groups
 		for _, destGroup := range rule.To {
+			var sentTo []string
 			for _, destIfaceName := range r.groupMap[destGroup] {
 				if destIfaceName == srcIface || reflectedTo[destIfaceName] {
 					continue
@@ -343,13 +344,19 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 				}
 
 				reflectedTo[destIfaceName] = true
+				sentTo = append(sentTo, destIfaceName)
+				r.forwarder(destIfaceName, data)
+			}
+
+			if len(sentTo) > 0 {
 				if msg.Response {
 					slog.Info("Service response reflected",
 						"src_ip", srcIP,
 						"from", srcIface,
 						"from_group", srcGroup,
-						"to", destIfaceName,
 						"to_group", destGroup,
+						"to_count", len(sentTo),
+						"to", strings.Join(sentTo, ","),
 						"records", getMsgSummary(msg),
 					)
 				} else {
@@ -357,12 +364,12 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 						"src_ip", srcIP,
 						"from", srcIface,
 						"from_group", srcGroup,
-						"to", destIfaceName,
 						"to_group", destGroup,
+						"to_count", len(sentTo),
+						"to", strings.Join(sentTo, ","),
 						"questions", getMsgSummary(msg),
 					)
 				}
-				r.forwarder(destIfaceName, data)
 			}
 		}
 	}
