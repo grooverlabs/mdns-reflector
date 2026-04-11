@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -19,6 +20,32 @@ import (
 const (
 	mDNSAddr = "224.0.0.251:5353"
 )
+
+func setupLogger(level string) {
+	var logLevel slog.Level
+	switch strings.ToLower(level) {
+	case "debug":
+		logLevel = slog.LevelDebug
+	case "warn":
+		logLevel = slog.LevelWarn
+	case "error":
+		logLevel = slog.LevelError
+	default:
+		logLevel = slog.LevelInfo
+	}
+
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: logLevel,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Remove timestamp — journald provides it
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		},
+	})
+	slog.SetDefault(slog.New(handler))
+}
 
 func getMsgSummary(msg *dns.Msg) string {
 	if !msg.Response {
@@ -113,13 +140,13 @@ func (r *Reflector) Start() error {
 	for ifaceName := range r.ifaceMap {
 		iface, err := net.InterfaceByName(ifaceName)
 		if err != nil {
-			log.Printf("Error finding interface %s: %v", ifaceName, err)
+			slog.Warn("Interface not found", "interface", ifaceName, "error", err)
 			continue
 		}
 		r.ifaceIndex[iface.Index] = ifaceName
 
 		if err := p.JoinGroup(iface, addr); err != nil {
-			log.Printf("Error joining multicast group on %s: %v", ifaceName, err)
+			slog.Warn("Failed to join multicast group", "interface", ifaceName, "error", err)
 			continue
 		}
 	}
@@ -143,11 +170,11 @@ func (r *Reflector) listen() {
 
 		restarts++
 		if restarts > maxListenerRestarts {
-			log.Printf("FATAL: Listener has restarted %d times, giving up", maxListenerRestarts)
+			slog.Error("Listener has restarted too many times, giving up", "max_restarts", maxListenerRestarts)
 			return
 		}
 		backoff := time.Duration(restarts) * time.Second
-		log.Printf("Listener restarting (attempt %d/%d) after %v", restarts, maxListenerRestarts, backoff)
+		slog.Warn("Listener restarting", "attempt", restarts, "max", maxListenerRestarts, "backoff", backoff)
 		time.Sleep(backoff)
 	}
 }
@@ -155,7 +182,7 @@ func (r *Reflector) listen() {
 func (r *Reflector) listenLoop() {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Printf("Recovered from panic in listener: %v", err)
+			slog.Error("Recovered from panic in listener", "error", err)
 		}
 	}()
 
@@ -163,7 +190,7 @@ func (r *Reflector) listenLoop() {
 	for {
 		n, cm, src, err := r.conn.ReadFrom(buf)
 		if err != nil {
-			log.Printf("Read error: %v", err)
+			slog.Error("Read error", "error", err)
 			return
 		}
 
@@ -316,15 +343,25 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 				}
 
 				reflectedTo[destIfaceName] = true
-				log.Printf("Reflecting %s from %s (%s) to %s (%s) - %s",
-					func() string {
-						if msg.Response {
-							return "Response"
-						}
-						return "Query"
-					}(),
-					srcIP, srcIface, destIfaceName, destGroup,
-					getMsgSummary(msg))
+				if msg.Response {
+					slog.Info("Service response reflected",
+						"src_ip", srcIP,
+						"from", srcIface,
+						"from_group", srcGroup,
+						"to", destIfaceName,
+						"to_group", destGroup,
+						"records", getMsgSummary(msg),
+					)
+				} else {
+					slog.Debug("Query reflected",
+						"src_ip", srcIP,
+						"from", srcIface,
+						"from_group", srcGroup,
+						"to", destIfaceName,
+						"to_group", destGroup,
+						"questions", getMsgSummary(msg),
+					)
+				}
 				r.forwarder(destIfaceName, data)
 			}
 		}
@@ -347,12 +384,12 @@ func (r *Reflector) forward(ifaceName string, data []byte) {
 	cm := &ipv4.ControlMessage{IfIndex: iface.Index}
 	dst, err := net.ResolveUDPAddr("udp4", mDNSAddr)
 	if err != nil {
-		log.Printf("Error resolving mDNS address: %v", err)
+		slog.Error("Failed to resolve mDNS address", "error", err)
 		return
 	}
 
 	if _, err := r.conn.WriteTo(data, cm, dst); err != nil {
-		log.Printf("Error forwarding to %s: %v", ifaceName, err)
+		slog.Error("Failed to forward packet", "interface", ifaceName, "error", err)
 	}
 }
 
@@ -365,10 +402,18 @@ func main() {
 		log.Fatalf("Error loading config: %v", err)
 	}
 
-	log.Printf("mDNS Reflector starting with %d interfaces", len(cfg.Interfaces))
+	setupLogger(cfg.LogLevel)
+
+	slog.Info("mDNS Reflector starting", "interfaces", len(cfg.Interfaces))
 	for i, rule := range cfg.Rules {
-		log.Printf("Rule %d: From:%s To:%v Types:%v Filters:%d IPs",
-			i, rule.From, rule.To, rule.Types, len(rule.Filter.AllowedIPs))
+		slog.Info("Rule loaded",
+			"rule", i,
+			"from", rule.From,
+			"to", rule.To,
+			"types", rule.Types,
+			"allowed_ips", len(rule.Filter.AllowedIPs),
+			"stateful", rule.Stateful,
+		)
 	}
 
 	reflector := NewReflector(cfg)
@@ -376,13 +421,13 @@ func main() {
 		log.Fatalf("Error starting reflector: %v", err)
 	}
 
-	log.Printf("mDNS Reflector started with %d interfaces", len(cfg.Interfaces))
+	slog.Info("mDNS Reflector started", "interfaces", len(cfg.Interfaces))
 
 	// Wait for shutdown signal
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
+	sig := <-sigCh
 
-	log.Println("Shutting down...")
+	slog.Info("Shutting down", "signal", sig)
 	reflector.Stop()
 }

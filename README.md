@@ -153,6 +153,76 @@ avahi-browse -rt _googlecast._tcp
 avahi-browse -at
 ```
 
+## Logging & Troubleshooting
+
+The reflector uses structured logging via Go's `log/slog`. Since it runs under systemd, timestamps are provided by journald — the application output contains only level, message, and key-value fields.
+
+### Log Levels
+
+Set the log level in `config.yaml`:
+
+```yaml
+log_level: "info"   # default — shows service responses, startup, errors
+```
+
+| Level | What you see |
+| :--- | :--- |
+| **`debug`** | Everything — all query reflections and service responses |
+| **`info`** | Service responses (printer/TV/Chromecast replying to users), startup, shutdown |
+| **`warn`** | Recoverable issues (missing interfaces, listener restarts) |
+| **`error`** | Failures (read errors, panics, forwarding failures) |
+
+### Viewing Logs
+
+```bash
+# Follow logs in real time
+journalctl -u mdns-reflector -f
+
+# Show last 100 lines
+journalctl -u mdns-reflector -n 100
+
+# Logs since last boot
+journalctl -u mdns-reflector -b
+```
+
+### Filtering Logs
+
+Structured fields make it easy to filter with `grep`:
+
+```bash
+# Is the printer responding?
+journalctl -u mdns-reflector -f | grep "src_ip=192.168.19.10"
+
+# What's reaching a specific VLAN?
+journalctl -u mdns-reflector -f | grep "to=vlan.10"
+
+# Show only service responses (hide queries even in debug mode)
+journalctl -u mdns-reflector -f | grep "Service response"
+
+# What's coming from the IoT network?
+journalctl -u mdns-reflector -f | grep "from_group=gl_iot"
+```
+
+### Example Log Output
+
+At `info` level (default) — only service responses:
+```
+INFO Service response reflected src_ip=192.168.19.10 from=vlan.19 from_group=gl_iot to=vlan.10 to_group=users records="Records: [_ipp._tcp.local. (PTR)]"
+```
+
+At `debug` level — queries are also visible:
+```
+DEBUG Query reflected src_ip=192.168.10.50 from=vlan.10 from_group=users to=vlan.19 to_group=gl_iot questions="Questions: [_ipp._tcp.local. (PTR)]"
+INFO Service response reflected src_ip=192.168.19.10 from=vlan.19 from_group=gl_iot to=vlan.10 to_group=users records="Records: [_ipp._tcp.local. (PTR)]"
+```
+
+### Quick Troubleshooting Checklist
+
+1. **No logs at all?** Check the service is running: `systemctl status mdns-reflector`
+2. **Queries visible but no responses?** The service device may not be in `allowed_ips`, or it's responding via Unicast (check QU-bit stripping).
+3. **Responses visible but client doesn't see the device?** Check the stateful window — the client VLAN must have sent a query first.
+4. **Too much noise?** Keep `log_level: "info"` — only service responses are shown. Switch to `"debug"` only when actively troubleshooting.
+
 ## Deployment
 
 ### Option 1: Debian Package (Recommended)

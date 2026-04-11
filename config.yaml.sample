@@ -1,5 +1,9 @@
 # mdns-reflector.yaml (Empty / Ready for Configuration)
 
+# Log level: debug, info, warn, error
+# Use "debug" to see all query reflections. Use "info" to see only service responses.
+log_level: "info"
+
 # 1. Define your network interfaces and group them.
 # 'name' must match your Linux interface name (e.g. vlan.10, eth0.20)
 # 'group' is a label used to write rules below.

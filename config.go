@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	LogLevel   string            `yaml:"log_level"`
 	Interfaces []InterfaceConfig `yaml:"interfaces" validate:"dive"`
 	Rules      []Rule            `yaml:"rules" validate:"dive"`
 }
