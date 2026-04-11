@@ -31,7 +31,9 @@ func getMsgSummary(msg *dns.Msg) string {
 
 	var aStrs []string
 	// Combine Answer and Extra records for a better overview
-	records := append(msg.Answer, msg.Extra...)
+	records := make([]dns.RR, 0, len(msg.Answer)+len(msg.Extra))
+	records = append(records, msg.Answer...)
+	records = append(records, msg.Extra...)
 	for _, a := range records {
 		aStrs = append(aStrs, fmt.Sprintf("%s (%s)", a.Header().Name, dns.TypeToString[dns.RRToType(a)]))
 	}
@@ -145,7 +147,10 @@ func (r *Reflector) listen() {
 			continue // Packet from an interface we don't care about
 		}
 
-		srcUDP := src.(*net.UDPAddr)
+		srcUDP, ok := src.(*net.UDPAddr)
+		if !ok {
+			continue
+		}
 		msg := new(dns.Msg)
 		msg.Data = buf[:n]
 		if err := msg.Unpack(); err != nil {
@@ -303,7 +308,11 @@ func (r *Reflector) forward(ifaceName string, data []byte) {
 	}
 
 	cm := &ipv4.ControlMessage{IfIndex: iface.Index}
-	dst, _ := net.ResolveUDPAddr("udp4", mDNSAddr)
+	dst, err := net.ResolveUDPAddr("udp4", mDNSAddr)
+	if err != nil {
+		log.Printf("Error resolving mDNS address: %v", err)
+		return
+	}
 
 	if _, err := r.conn.WriteTo(data, cm, dst); err != nil {
 		log.Printf("Error forwarding to %s: %v", ifaceName, err)
