@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/go-playground/validator/v10"
@@ -8,7 +9,6 @@ import (
 )
 
 type Config struct {
-	LogLevel   string            `yaml:"log_level"`
 	Interfaces []InterfaceConfig `yaml:"interfaces" validate:"dive"`
 	Rules      []Rule            `yaml:"rules" validate:"dive"`
 }
@@ -56,6 +56,22 @@ func LoadConfig(path string) (*Config, error) {
 	for i := range config.Rules {
 		if config.Rules[i].Stateful && config.Rules[i].StatefulWindow <= 0 {
 			config.Rules[i].StatefulWindow = 60
+		}
+	}
+
+	// Validate that rule groups reference defined interfaces
+	groups := make(map[string]bool)
+	for _, iface := range config.Interfaces {
+		groups[iface.Group] = true
+	}
+	for i, rule := range config.Rules {
+		if !groups[rule.From] {
+			return nil, fmt.Errorf("rule %d: 'from' group %q is not defined in interfaces", i, rule.From)
+		}
+		for _, to := range rule.To {
+			if !groups[to] {
+				return nil, fmt.Errorf("rule %d: 'to' group %q is not defined in interfaces", i, to)
+			}
 		}
 	}
 

@@ -1,5 +1,4 @@
 # mdns-reflector.yaml (Empty / Ready for Configuration)
-log_level: "info"
 
 # 1. Define your network interfaces and group them.
 # 'name' must match your Linux interface name (e.g. vlan.10, eth0.20)

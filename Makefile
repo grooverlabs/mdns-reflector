@@ -16,6 +16,9 @@ GOMOD=$(GOCMD) mod
 # Default architecture
 ARCH ?= arm64
 
+# Version from git tag (strips leading 'v'), falls back to 0.0.0-dev
+VERSION ?= $(shell (git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0-dev") | sed 's/^v//')
+
 # Raspberry Pi (aarch64) parameters
 PLATFORM_PI=linux/arm64
 
@@ -41,7 +44,7 @@ cross-compile:
 
 package: cross-compile
 	cp $(BUILD_DIR)/$(BINARY_NAME)-$(ARCH) $(BUILD_DIR)/$(BINARY_NAME)-pkg
-	export ARCH=$(ARCH); nfpm pkg --packager deb --target $(BUILD_DIR)/$(BINARY_NAME)_1.0.0_$(ARCH).deb
+	export ARCH=$(ARCH) VERSION=$(VERSION); nfpm pkg --packager deb --target $(BUILD_DIR)/$(BINARY_NAME)_$(VERSION)_$(ARCH).deb
 	rm $(BUILD_DIR)/$(BINARY_NAME)-pkg
 
 test:

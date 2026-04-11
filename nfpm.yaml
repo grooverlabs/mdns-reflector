@@ -1,7 +1,7 @@
 name: "mdns-reflector"
 arch: "${ARCH}"
 platform: "linux"
-version: "1.0.0"
+version: "${VERSION}"
 section: "default"
 priority: "extra"
 maintainer: "pmaseberg"

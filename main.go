@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"codeberg.org/miekg/dns"
@@ -47,6 +50,8 @@ func getMsgSummary(msg *dns.Msg) string {
 	return "Records: [" + strings.Join(aStrs, ", ") + "]"
 }
 
+const maxListenerRestarts = 5
+
 type Reflector struct {
 	config     *Config
 	conn       *ipv4.PacketConn
@@ -61,6 +66,8 @@ type Reflector struct {
 	// forwarder is the function called to actually send a packet.
 	// We use a field here so it can be mocked in unit tests.
 	forwarder func(ifaceName string, data []byte)
+
+	done chan struct{}
 }
 
 func NewReflector(cfg *Config) *Reflector {
@@ -70,6 +77,7 @@ func NewReflector(cfg *Config) *Reflector {
 		ifaceIndex:    make(map[int]string),
 		groupMap:      make(map[string][]string),
 		recentQueries: make(map[string]time.Time),
+		done:          make(chan struct{}),
 	}
 
 	r.forwarder = r.forward // Set the default implementation
@@ -84,8 +92,7 @@ func NewReflector(cfg *Config) *Reflector {
 
 func (r *Reflector) Start() error {
 	if len(r.ifaceMap) == 0 {
-		log.Printf("Warning: No interfaces configured. Waiting for configuration...")
-		return nil
+		return fmt.Errorf("no interfaces configured")
 	}
 
 	c, err := net.ListenPacket("udp4", ":5353")
@@ -123,10 +130,32 @@ func (r *Reflector) Start() error {
 }
 
 func (r *Reflector) listen() {
+	restarts := 0
+	for {
+		r.listenLoop()
+
+		// Check if we were told to stop
+		select {
+		case <-r.done:
+			return
+		default:
+		}
+
+		restarts++
+		if restarts > maxListenerRestarts {
+			log.Printf("FATAL: Listener has restarted %d times, giving up", maxListenerRestarts)
+			return
+		}
+		backoff := time.Duration(restarts) * time.Second
+		log.Printf("Listener restarting (attempt %d/%d) after %v", restarts, maxListenerRestarts, backoff)
+		time.Sleep(backoff)
+	}
+}
+
+func (r *Reflector) listenLoop() {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Printf("Recovered from panic in listener: %v", err)
-			go r.listen() // Restart the listener
 		}
 	}()
 
@@ -301,6 +330,14 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 		}
 	}
 }
+
+func (r *Reflector) Stop() {
+	close(r.done)
+	if r.conn != nil {
+		r.conn.Close()
+	}
+}
+
 func (r *Reflector) forward(ifaceName string, data []byte) {
 	iface, err := net.InterfaceByName(ifaceName)
 	if err != nil {
@@ -341,6 +378,11 @@ func main() {
 
 	log.Printf("mDNS Reflector started with %d interfaces", len(cfg.Interfaces))
 
-	// Keep main goroutine alive
-	select {}
+	// Wait for shutdown signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+
+	log.Println("Shutting down...")
+	reflector.Stop()
 }

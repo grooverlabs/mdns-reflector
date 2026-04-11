@@ -171,6 +171,8 @@ Building a `.deb` package automates the system requirements (sysctl, 8021q) and 
    sudo dpkg -i bin/mdns-reflector_1.0.0_arm64.deb
    ```
 
+> **Note:** The package version is derived automatically from the latest git tag. See [Versioning](#versioning) below.
+
 ### Option 2: Manual Binary Deployment
 1. **Build:**
    ```bash
@@ -186,3 +188,30 @@ Building a `.deb` package automates the system requirements (sysctl, 8021q) and 
    ```bash
    sudo ./bin/mdns-reflector-arm64 --config config.yaml
    ```
+
+## Versioning
+
+The package version is pulled automatically from the latest git tag (stripping the leading `v`). If no tag exists, it defaults to `0.0.0-dev`.
+
+### Creating a version tag
+```bash
+# Tag the current commit
+git tag v1.0.0
+
+# Or tag with an annotation
+git tag -a v1.0.0 -m "Initial release"
+
+# Push the tag to the remote
+git push origin v1.0.0
+```
+
+### Updating the version
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+### Overriding the version manually
+```bash
+make package VERSION=2.0.0
+```
