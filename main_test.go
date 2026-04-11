@@ -39,17 +39,21 @@ func TestHandlePacket(t *testing.T) {
 				},
 			},
 			{
-				From:  "gl_iot",
-				To:    []string{"users"},
-				Types: []string{"response"},
+				From:           "gl_iot",
+				To:             []string{"users"},
+				Types:          []string{"response"},
+				Stateful:       true,
+				StatefulWindow: 60,
 				Filter: Filter{
 					AllowedIPs: []string{"192.168.19.10"},
 				},
 			},
 			{
-				From:  "gl_tv",
-				To:    []string{"users"},
-				Types: []string{"response"},
+				From:           "gl_tv",
+				To:             []string{"users"},
+				Types:          []string{"response"},
+				Stateful:       true,
+				StatefulWindow: 60,
 			},
 		},
 	}

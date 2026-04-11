@@ -9,7 +9,14 @@ interfaces:
 #  - { name: "vlan.19", group: "gl_iot" }
 
 # 2. Define the behavior between groups.
+# 'stateful: true' only reflects responses to interfaces that sent a query recently.
+# 'stateful_window' is the window in seconds (defaults to 60 if omitted).
 rules:
 #  - from: "users"
 #    to: ["gl_iot"]
 #    types: ["query"]
+#  - from: "gl_iot"
+#    to: ["users"]
+#    types: ["response"]
+#    stateful: true
+#    stateful_window: 60

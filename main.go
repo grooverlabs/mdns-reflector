@@ -268,14 +268,15 @@ func (r *Reflector) handlePacket(srcIface string, data []byte, msg *dns.Msg, src
 				}
 
 				// STATEFUL OPTIMIZATION:
-				// If this is a Response going to a 'users' group,
-				// ONLY send it to interfaces that have sent a query in the last 60 seconds.
-				if msg.Response && destGroup == "users" {
+				// If the rule is marked as stateful,
+				// ONLY send responses to interfaces that have sent a recent query.
+				if msg.Response && rule.Stateful {
+					window := time.Duration(rule.StatefulWindow) * time.Second
 					r.mu.Lock()
 					lastQuery, ok := r.recentQueries[destIfaceName]
 					r.mu.Unlock()
 
-					if !ok || time.Since(lastQuery) > 60*time.Second {
+					if !ok || time.Since(lastQuery) > window {
 						continue
 					}
 				}

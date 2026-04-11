@@ -19,10 +19,12 @@ type InterfaceConfig struct {
 }
 
 type Rule struct {
-	From   string   `yaml:"from" validate:"required"`
-	To     []string `yaml:"to" validate:"required"`
-	Filter Filter   `yaml:"filter"`
-	Types  []string `yaml:"types"`
+	From           string   `yaml:"from" validate:"required"`
+	To             []string `yaml:"to" validate:"required"`
+	Filter         Filter   `yaml:"filter"`
+	Types          []string `yaml:"types"`
+	Stateful       bool     `yaml:"stateful"`
+	StatefulWindow int      `yaml:"stateful_window"` // seconds; defaults to 60 if omitted
 }
 
 type Filter struct {
@@ -48,6 +50,13 @@ func LoadConfig(path string) (*Config, error) {
 	validate := validator.New()
 	if err := validate.Struct(&config); err != nil {
 		return nil, err
+	}
+
+	// Apply defaults
+	for i := range config.Rules {
+		if config.Rules[i].Stateful && config.Rules[i].StatefulWindow <= 0 {
+			config.Rules[i].StatefulWindow = 60
+		}
 	}
 
 	return &config, nil
