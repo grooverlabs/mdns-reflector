@@ -60,6 +60,7 @@ func (r *Reflector) refresh() {
 			if prev != nil {
 				slog.Info("Interface gone", "interface", ic.Name)
 			}
+			r.leave(ic.Name)
 			continue
 		}
 		info := &ifaceInfo{
@@ -99,6 +100,7 @@ func (r *Reflector) join(si *net.Interface) {
 	if r.joined[si.Name] == si.Index {
 		return
 	}
+	r.leave(si.Name) // recreated at a new index: drop the stale membership first
 	err := r.pc.JoinGroup(si, mdnsGroup)
 	if err != nil && !errors.Is(err, syscall.EADDRINUSE) {
 		attrs := []any{"interface", si.Name, "error", err}
@@ -115,6 +117,21 @@ func (r *Reflector) join(si *net.Interface) {
 	}
 	delete(r.joinFailed, si.Name)
 	r.joined[si.Name] = si.Index
+}
+
+// leave drops the membership held for name at its old index, if any. A stale
+// membership (the interface was deleted or recreated) still counts against
+// net.ipv4.igmp_max_memberships, so without this enough recreations make
+// every later join fail with ENOBUFS.
+func (r *Reflector) leave(name string) {
+	idx, ok := r.joined[name]
+	if !ok {
+		return
+	}
+	if err := r.pc.LeaveGroup(&net.Interface{Index: idx}, mdnsGroup); err != nil {
+		slog.Debug("Leaving stale multicast membership failed", "interface", name, "index", idx, "error", err)
+	}
+	delete(r.joined, name)
 }
 
 func ipv4Prefix(a net.Addr) (netip.Prefix, bool) {

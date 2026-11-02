@@ -3,7 +3,7 @@ set -e
 
 # Create the service user
 if ! id -u mdns-reflector >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin mdns-reflector
+    useradd --system --user-group --no-create-home --shell /usr/sbin/nologin mdns-reflector
 fi
 
 # Config: copy the example on first install only; never touch an existing
