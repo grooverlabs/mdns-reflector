@@ -1,25 +1,38 @@
-# mdns-reflector.yaml (Empty / Ready for Configuration)
+# mdns-reflector configuration (empty: fill in interfaces and rules)
+# Unknown keys are rejected. The service stays stopped (exit 78) until this
+# file is valid: journalctl -u mdns-reflector shows why.
 
 # Log level: debug, info, warn, error
-# Use "debug" to see all query reflections. Use "info" to see only service responses.
+# "info" logs startup and interface changes; "debug" logs every reflected
+# query and response and every dropped packet.
 log_level: "info"
 
-# 1. Define your network interfaces and group them.
-# 'name' must match your Linux interface name (e.g. vlan.10, eth0.20)
-# 'group' is a label used to write rules below.
+# 1. Network interfaces, each in a group. 'name' is the Linux interface name
+# (e.g. vlan.10, eth0.20); 'group' is the label rules refer to. Interfaces
+# that don't exist yet are picked up when they appear (checked every 30 s).
 interfaces:
 #  - { name: "vlan.10", group: "users" }
 #  - { name: "vlan.19", group: "gl_iot" }
 
-# 2. Define the behavior between groups.
-# 'stateful: true' only reflects responses to interfaces that sent a query recently.
-# 'stateful_window' is the window in seconds (defaults to 60 if omitted).
+# 2. Rules: which packets go from one group to others.
+#   types (required):  [query], [response] or both
+#   to:                one or more groups, never the 'from' group itself
+#   stateful:          responses only. Default true: a response goes to an
+#                      interface only if that interface sent a query, within
+#                      stateful_window seconds (default 60), for a name the
+#                      response answers. 'stateful: false' sends every response.
+#   filter.allowed_ips:      IPv4 source addresses allowed (L3 only, see README)
+#   filter.allowed_services: queries only; every question must be one of these
+#                      services (or below one), a bare hostname, or a reverse
+#                      lookup, or the query is not forwarded
 rules:
 #  - from: "users"
 #    to: ["gl_iot"]
 #    types: ["query"]
+#    filter:
+#      allowed_services: ["_ipp._tcp", "_airplay._tcp"]
 #  - from: "gl_iot"
 #    to: ["users"]
 #    types: ["response"]
-#    stateful: true
-#    stateful_window: 60
+#    filter:
+#      allowed_ips: ["192.168.19.10"]
