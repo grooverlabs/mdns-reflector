@@ -2,30 +2,51 @@ name: "mdns-reflector"
 arch: "${ARCH}"
 platform: "linux"
 version: "${VERSION}"
-section: "default"
-priority: "extra"
-maintainer: "pmaseberg"
-description: "Stateful mDNS Reflector for Multi-VLAN networks"
-vendor: "pmaseberg"
-homepage: "https://github.com/pmaseberg/mdns-reflector"
+section: "net"
+priority: "optional"
+maintainer: "GrooverLabs <paulm@grooverlabs.org>"
+description: |
+  Stateful mDNS reflector for multi-VLAN networks.
+  Reflects mDNS queries and responses between groups of interfaces under
+  directional rules with service and source-address filters.
+vendor: "GrooverLabs"
+homepage: "https://github.com/grooverlabs/mdns-reflector"
 license: "MIT"
+
+depends:
+  - systemd
 
 contents:
   - src: "bin/mdns-reflector-pkg"
     dst: "/usr/bin/mdns-reflector"
-  
+    file_info:
+      mode: 0755
+
+  # Example only; postinstall copies it to config.yaml on first install and
+  # never touches config.yaml after that.
   - src: "config.yaml.sample"
-    dst: "/etc/mdns-reflector/config.yaml"
-    type: "config"
+    dst: "/etc/mdns-reflector/config.yaml.example"
+    file_info:
+      mode: 0644
+      owner: root
+      group: root
 
   - src: "packaging/etc/sysctl.d/mdns-reflector.conf"
     dst: "/etc/sysctl.d/mdns-reflector.conf"
+    file_info:
+      mode: 0644
 
   - src: "packaging/etc/modules-load.d/mdns-reflector.conf"
     dst: "/etc/modules-load.d/mdns-reflector.conf"
+    file_info:
+      mode: 0644
 
   - src: "packaging/lib/systemd/system/mdns-reflector.service"
     dst: "/lib/systemd/system/mdns-reflector.service"
+    file_info:
+      mode: 0644
 
 scripts:
   postinstall: "packaging/postinstall.sh"
+  preremove: "packaging/preremove.sh"
+  postremove: "packaging/postremove.sh"
